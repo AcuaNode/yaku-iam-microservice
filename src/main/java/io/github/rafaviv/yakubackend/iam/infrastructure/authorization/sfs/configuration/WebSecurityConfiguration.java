@@ -48,8 +48,7 @@ public class WebSecurityConfiguration {
         this.unauthorizedRequestHandler = authenticationEntryPoint;
     }
 
-    @Bean
-    public BearerAuthorizationRequestFilter authorizationRequestFilter() {
+    private BearerAuthorizationRequestFilter authorizationRequestFilter() {
         return new BearerAuthorizationRequestFilter(tokenService, userDetailsService);
     }
 
@@ -95,7 +94,8 @@ public class WebSecurityConfiguration {
                                 "/swagger-ui.html",
                                 "/swagger-ui/**",
                                 "/swagger-resources/**",
-                                "/webjars/**"
+                                "/webjars/**",
+                                "/error"
                         ).permitAll()
                         .anyRequest().authenticated()
                 )

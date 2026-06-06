@@ -44,17 +44,11 @@ public class BearerAuthorizationRequestFilter extends OncePerRequestFilter {
             @NonNull FilterChain filterChain
     ) throws ServletException, IOException {
         String path = request.getRequestURI();
-        System.out.println("➡️ Request entrante a: " + path);
-
-        // 1️⃣ Permitir preflight requests (CORS)
-        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
-            response.setStatus(HttpServletResponse.SC_OK);
-            return;
-        }
+        LOGGER.debug("Incoming request to: {}", path);
 
         // 2️⃣ Endpoints públicos (sin token requerido)
-        if (path.contains("/api/v1/users/signup") || path.contains("/api/v1/users/signin")) {
-            System.out.println("🟢 Ruta pública detectada (" + path + "), omitiendo validación JWT");
+        if (isPublicPath(path)) {
+            LOGGER.debug("🟢 Ruta pública detectada ({}), omitiendo validación JWT", path);
             filterChain.doFilter(request, response);
             return;
         }
@@ -62,16 +56,32 @@ public class BearerAuthorizationRequestFilter extends OncePerRequestFilter {
         // 3️⃣ Validación normal del token
         String token = tokenService.getBearerTokenFrom(request);
 
-        if (StringUtils.hasText(token) && tokenService.validateToken(token)) {
-            Long userId = tokenService.getUserIdFromToken(token);
-            UserDetails userDetails = userDetailsService.loadUserById(userId);
+        if (StringUtils.hasText(token)) {
+            try {
+                if (tokenService.validateToken(token)) {
+                    Long userId = tokenService.getUserIdFromToken(token);
+                    UserDetails userDetails = userDetailsService.loadUserById(userId);
 
-            SecurityContext context = SecurityContextHolder.createEmptyContext();
-            var authenticationToken = UsernamePasswordAuthenticationTokenBuilder.build(userDetails, request);
-            context.setAuthentication(authenticationToken);
-            SecurityContextHolder.setContext(context);
+                    SecurityContext context = SecurityContextHolder.createEmptyContext();
+                    var authenticationToken = UsernamePasswordAuthenticationTokenBuilder.build(userDetails, request);
+                    context.setAuthentication(authenticationToken);
+                    SecurityContextHolder.setContext(context);
+                }
+            } catch (Exception e) {
+                LOGGER.warn("Invalid JWT token for request to {}: {}", path, e.getMessage());
+            }
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private boolean isPublicPath(String path) {
+        return path.contains("/api/v1/users/signup") ||
+               path.contains("/api/v1/users/signin") ||
+               path.contains("/api/v1/users/available-roles") ||
+               path.contains("/v3/api-docs") ||
+               path.contains("/swagger-ui") ||
+               path.contains("/swagger-resources") ||
+               path.contains("/webjars");
     }
 } 

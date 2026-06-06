@@ -25,8 +25,9 @@ High-signal notes for OpenCode sessions working in this repo.
 ## Testing Quirks
 
 - Only one test exists: `YakubackendApplicationTests` (context-loads smoke test).
-- It boots the full Spring context with the `dev` profile active, so Postgres must be running on `localhost:5434`.
-- **H2 is on the test classpath** (`com.h2database:h2` scope=test), but there is **no `application-test.properties`** override, so the datasource still points to Postgres unless you add one.
+- `@ActiveProfiles("test")` is set on the test class, so it uses `application-test.properties` with H2 in-memory DB instead of Postgres.
+- **H2 is on the test classpath** (`com.h2database:h2` scope=test), and `application-test.properties` overrides the datasource to `jdbc:h2:mem:testdb;MODE=PostgreSQL`.
+- Kafka auto-configuration is excluded in tests (`spring.autoconfigure.exclude=org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration`).
 
 ## Architecture
 
