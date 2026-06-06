@@ -3,8 +3,16 @@ package io.github.rafaviv.yakubackend.shared.infrastructure.persistence.jpa.conf
 import org.hibernate.boot.model.naming.Identifier;
 import org.hibernate.boot.model.naming.PhysicalNamingStrategy;
 import org.hibernate.engine.jdbc.env.spi.JdbcEnvironment;
-import org.atteo.evo.inflector.English; // Import correcto para la nueva librería
 
+import static io.github.encryptorcode.pluralize.Pluralize.pluralize;
+
+/**
+ * Snake Case With Pluralized Table Physical Naming Strategy
+ * @summary
+ * PhysicalNamingStrategy implementation that converts entity names to snake_case and table names to pluralized snake_case.
+ *
+ * @since 1.0.0
+ */
 public class SnakeCaseWithPluralizedTablePhysicalNamingStrategy implements PhysicalNamingStrategy {
     @Override
     public Identifier toPhysicalCatalogName(Identifier identifier, JdbcEnvironment jdbcEnvironment) {
@@ -31,6 +39,11 @@ public class SnakeCaseWithPluralizedTablePhysicalNamingStrategy implements Physi
         return this.toSnakeCase(identifier);
     }
 
+    /**
+     * Convert identifier to snake case
+     * @param identifier Identifier
+     * @return Identifier
+     */
     private Identifier toSnakeCase(final Identifier identifier) {
         if (identifier == null) {
             return null;
@@ -43,9 +56,13 @@ public class SnakeCaseWithPluralizedTablePhysicalNamingStrategy implements Physi
         return Identifier.toIdentifier(newName);
     }
 
+    /**
+     * Convert identifier to plural
+     * @param identifier Identifier
+     * @return Identifier
+     */
     private Identifier toPlural(final Identifier identifier) {
-        // Usamos English.plural() que es el estándar de Evo Inflector
-        final String newName = English.plural(identifier.getText());
+        final String newName = pluralize(identifier.getText());
         return Identifier.toIdentifier(newName);
     }
 }
