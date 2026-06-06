@@ -19,15 +19,14 @@ High-signal notes for OpenCode sessions working in this repo.
   - Start it: `docker compose up -d postgres`
   - `compose.yaml` is at repo root.
 - **Server port:** `8082`
-- **Kafka:** `spring-kafka` is now on the classpath and `compose.yaml` defines a broker on `localhost:9094`, but there is **no producer/consumer code** yet.
+- **Kafka:** `spring-kafka` is on the classpath. `KafkaProducerConfig` and `KafkaDomainEventPublisher` are wired. `UserRegisteredEvent` is published to topic `iam.user-registered`.
 - **CORS:** Explicitly configured for `http://localhost:4200` only.
 
 ## Testing Quirks
 
 - Only one test exists: `YakubackendApplicationTests` (context-loads smoke test).
-- It boots the full Spring context with the `dev` profile active.
+- It boots the full Spring context with the `dev` profile active, so Postgres must be running on `localhost:5434`.
 - **H2 is on the test classpath** (`com.h2database:h2` scope=test), but there is **no `application-test.properties`** override, so the datasource still points to Postgres unless you add one.
-- The app currently fails to start in tests because `EquipmentExternalService` has no bean implementation (see `BUGS.md`). Once that is resolved, Postgres must be running on `localhost:5434` for the test to pass.
 
 ## Architecture
 
@@ -35,7 +34,7 @@ DDD/CQRS-style layering under `io.github.rafaviv.yakubackend.iam`:
 
 - `application/internal` — command & query handlers, domain services impl.
 - `domain` — aggregates (`User`), commands, queries, valueobjects, entities (`Role`), events, exceptions.
-- `infrastructure` — JPA repos, Spring Security config, JWT filter pipeline (`BearerAuthorizationRequestFilter`), BCrypt hashing, external service interfaces.
+- `infrastructure` — JPA repos, Spring Security config, JWT filter pipeline (`BearerAuthorizationRequestFilter`), BCrypt hashing, Kafka event publishing.
 - `interfaces` — REST controllers. `UsersController` is the main surface at `/api/v1/users`.
 - `shared` — OpenAPI config (`/swagger-ui.html`), global exception handler, JPA physical naming strategy (`SnakeCaseWithPluralizedTablePhysicalNamingStrategy`).
 
@@ -50,6 +49,17 @@ On startup, `ApplicationReadyEventHandler` seeds the `Role` table with `ADMIN` a
   - `GET /api/v1/users/available-roles`
   - Swagger/OpenAPI docs (`/swagger-ui.html`, `/v3/api-docs/**`)
 - All other requests require a valid JWT.
+
+## Farm-Token Validation (Option 4 — Pre-Validation + Async)
+
+The team selected **Option 4** (see `DECISIONS.md`):
+
+- **Frontend** calls Equipment's `GET /equipment/farm-tokens/validate?token=X` **before** signup for immediate UX feedback.
+- **IAM** publishes `UserRegisteredEvent` (with `farmToken`) to Kafka topic `iam.user-registered`.
+- **Equipment** consumes the event to validate the token and link the user to the farm asynchronously.
+- IAM only enforces the **structural** rule: OPERATORs must provide a `farmToken` in the request (null/blank check). It does not validate token validity.
+
+IAM backend is complete and ready. Equipment team needs to implement the validation endpoint and Kafka consumer (see `EQUIPMENT.md`).
 
 ## Notable Dependencies
 

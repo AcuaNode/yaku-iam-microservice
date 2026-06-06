@@ -1,9 +1,9 @@
 # Known Issues — iam-service
 
-## Startup
-
-- **`EquipmentExternalService` has no implementation.** `UserCommandServiceImpl` autowires it, so the Spring context fails with `NoSuchBeanDefinitionException` on every startup and test run. Either provide a bean (e.g. a REST client adapter or a no-op stub) or remove the dependency from the command service.
-
 ## Documentation
 
 - `README.md` is still a placeholder string (`"# yaku-iam-microservice"`) with no setup or usage instructions.
+
+## Historical Note
+
+The synchronous `EquipmentExternalService` coupling that previously blocked IAM startup has been resolved. See `DECISIONS.md` (ADR-001) for the full architectural decision record on farm-token validation, the options considered, and why async Kafka-based validation was chosen.
