@@ -11,11 +11,12 @@ import io.github.rafaviv.yakubackend.iam.domain.model.entities.Role;
 import io.github.rafaviv.yakubackend.iam.domain.model.exceptions.InvalidCredentialsException;
 import io.github.rafaviv.yakubackend.iam.domain.model.exceptions.UserAccountDeactivatedException;
 import io.github.rafaviv.yakubackend.iam.domain.model.exceptions.UserAlreadyExistsException;
+import io.github.rafaviv.yakubackend.iam.domain.model.events.UserRegisteredEvent;
 import io.github.rafaviv.yakubackend.iam.domain.services.RoleValidationService;
 import io.github.rafaviv.yakubackend.iam.domain.services.UserCommandService;
+import io.github.rafaviv.yakubackend.iam.infrastructure.events.kafka.KafkaDomainEventPublisher;
 import io.github.rafaviv.yakubackend.iam.infrastructure.persistence.jpa.repositories.RoleRepository;
 import io.github.rafaviv.yakubackend.iam.infrastructure.persistence.jpa.repositories.UserRepository;
-import io.github.rafaviv.yakubackend.iam.infrastructure.external.EquipmentExternalService; // Asegúrate de este import
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -28,14 +29,14 @@ import java.util.Optional;
 public class UserCommandServiceImpl implements UserCommandService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(UserCommandServiceImpl.class);
+    private static final String USER_REGISTERED_TOPIC = "iam.user-registered";
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final HashingService hashingService;
     private final TokenService tokenService;
     private final RoleValidationService roleValidationService;
-    private final org.springframework.context.ApplicationEventPublisher eventPublisher;
-    private final EquipmentExternalService equipmentExternalService; // Tipo correcto
+    private final KafkaDomainEventPublisher kafkaDomainEventPublisher;
 
     public UserCommandServiceImpl(
             UserRepository userRepository,
@@ -43,15 +44,13 @@ public class UserCommandServiceImpl implements UserCommandService {
             HashingService hashingService,
             TokenService tokenService,
             RoleValidationService roleValidationService,
-            org.springframework.context.ApplicationEventPublisher eventPublisher,
-            EquipmentExternalService equipmentExternalService) { // Parámetro con tipo correcto
+            KafkaDomainEventPublisher kafkaDomainEventPublisher) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.hashingService = hashingService;
         this.tokenService = tokenService;
         this.roleValidationService = roleValidationService;
-        this.eventPublisher = eventPublisher;
-        this.equipmentExternalService = equipmentExternalService; // Asignación correcta
+        this.kafkaDomainEventPublisher = kafkaDomainEventPublisher;
     }
 
     @Override
@@ -71,9 +70,6 @@ public class UserCommandServiceImpl implements UserCommandService {
             if (command.farmToken() == null || command.farmToken().isBlank()) {
                 throw new IllegalArgumentException("Farm token is required for OPERATOR role");
             }
-            if (!equipmentExternalService.isValidAndUnusedFarmToken(command.farmToken())) {
-                throw new IllegalArgumentException("Invalid or already used Farm token");
-            }
         }
 
         String hashedPassword = hashingService.encode(command.password());
@@ -89,18 +85,16 @@ public class UserCommandServiceImpl implements UserCommandService {
 
         Role requestedRole = roleRepository.findByName(command.requestedRole())
                 .orElseThrow(() -> new IllegalStateException("Requested role " + command.requestedRole() + " not found"));
-        
+
         user.addRole(requestedRole);
-        
-        if (command.requestedRole() == io.github.rafaviv.yakubackend.iam.domain.model.valueobjects.Roles.OPERATOR) {
-        	equipmentExternalService.findFarmIdByToken(command.farmToken()).ifPresent(user::setAssignedFarmId);
-        }
 
         User savedUser = userRepository.save(user);
         LOGGER.info("User registered successfully with ID: {}", savedUser.getId());
 
-        eventPublisher.publishEvent(new io.github.rafaviv.yakubackend.iam.domain.model.events.UserRegisteredEvent(
-                savedUser.getId(), savedUser.getUsername(), savedUser.getEmail().address(), command.farmToken()));
+        UserRegisteredEvent event = new UserRegisteredEvent(
+                savedUser.getId(), savedUser.getUsername(), savedUser.getEmail().address(), command.farmToken());
+        kafkaDomainEventPublisher.publish(USER_REGISTERED_TOPIC, event);
+        LOGGER.info("Published UserRegisteredEvent to Kafka topic '{}': userId={}", USER_REGISTERED_TOPIC, savedUser.getId());
     }
 
     @Override
@@ -126,7 +120,7 @@ public class UserCommandServiceImpl implements UserCommandService {
     }
 
     public String generateTokenForUser(User user) {
-        String userRole = user.getRoles().isEmpty() ? "OPERATOR" : 
+        String userRole = user.getRoles().isEmpty() ? "OPERATOR" :
                          user.getRoles().get(0).getName().name();
         return tokenService.generateToken(user.getId(), userRole);
     }
