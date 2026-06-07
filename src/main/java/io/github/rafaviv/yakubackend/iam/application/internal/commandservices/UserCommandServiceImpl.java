@@ -2,6 +2,7 @@ package io.github.rafaviv.yakubackend.iam.application.internal.commandservices;
 
 import io.github.rafaviv.yakubackend.iam.application.internal.outboundservices.hashing.HashingService;
 import io.github.rafaviv.yakubackend.iam.application.internal.outboundservices.tokens.TokenService;
+import io.github.rafaviv.yakubackend.iam.domain.model.aggregates.FarmToken;
 import io.github.rafaviv.yakubackend.iam.domain.model.aggregates.User;
 import io.github.rafaviv.yakubackend.iam.domain.model.valueobjects.Email;
 import io.github.rafaviv.yakubackend.iam.domain.model.valueobjects.HashedPassword;
@@ -15,6 +16,7 @@ import io.github.rafaviv.yakubackend.iam.domain.model.events.UserRegisteredEvent
 import io.github.rafaviv.yakubackend.iam.domain.services.RoleValidationService;
 import io.github.rafaviv.yakubackend.iam.domain.services.UserCommandService;
 import io.github.rafaviv.yakubackend.iam.infrastructure.events.kafka.KafkaDomainEventPublisher;
+import io.github.rafaviv.yakubackend.iam.infrastructure.persistence.jpa.repositories.FarmTokenRepository;
 import io.github.rafaviv.yakubackend.iam.infrastructure.persistence.jpa.repositories.RoleRepository;
 import io.github.rafaviv.yakubackend.iam.infrastructure.persistence.jpa.repositories.UserRepository;
 import org.slf4j.Logger;
@@ -37,6 +39,7 @@ public class UserCommandServiceImpl implements UserCommandService {
     private final TokenService tokenService;
     private final RoleValidationService roleValidationService;
     private final KafkaDomainEventPublisher kafkaDomainEventPublisher;
+    private final FarmTokenRepository farmTokenRepository;
 
     public UserCommandServiceImpl(
             UserRepository userRepository,
@@ -44,13 +47,15 @@ public class UserCommandServiceImpl implements UserCommandService {
             HashingService hashingService,
             TokenService tokenService,
             RoleValidationService roleValidationService,
-            KafkaDomainEventPublisher kafkaDomainEventPublisher) {
+            KafkaDomainEventPublisher kafkaDomainEventPublisher,
+            FarmTokenRepository farmTokenRepository) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.hashingService = hashingService;
         this.tokenService = tokenService;
         this.roleValidationService = roleValidationService;
         this.kafkaDomainEventPublisher = kafkaDomainEventPublisher;
+        this.farmTokenRepository = farmTokenRepository;
     }
 
     @Override
@@ -66,12 +71,6 @@ public class UserCommandServiceImpl implements UserCommandService {
             throw new IllegalArgumentException("Cannot request role: " + command.requestedRole());
         }
 
-        if (command.requestedRole() == io.github.rafaviv.yakubackend.iam.domain.model.valueobjects.Roles.OPERATOR) {
-            if (command.farmToken() == null || command.farmToken().isBlank()) {
-                throw new IllegalArgumentException("Farm token is required for OPERATOR role");
-            }
-        }
-
         String hashedPassword = hashingService.encode(command.password());
 
         User user = new User(
@@ -82,6 +81,22 @@ public class UserCommandServiceImpl implements UserCommandService {
                 command.lastName(),
                 false
         );
+
+        Long assignedFarmId = null;
+        if (command.requestedRole() == io.github.rafaviv.yakubackend.iam.domain.model.valueobjects.Roles.OPERATOR) {
+            if (command.farmToken() == null || command.farmToken().isBlank()) {
+                throw new IllegalArgumentException("Farm token is required for OPERATOR role");
+            }
+            FarmToken farmToken = farmTokenRepository.findByToken(command.farmToken())
+                    .orElseThrow(() -> new IllegalArgumentException("Invalid Farm token"));
+            if (farmToken.isUsed()) {
+                throw new IllegalArgumentException("Farm token is already used");
+            }
+            assignedFarmId = farmToken.getFarmId();
+            user.setAssignedFarmId(assignedFarmId);
+            farmToken.markAsUsed();
+            farmTokenRepository.save(farmToken);
+        }
 
         Role requestedRole = roleRepository.findByName(command.requestedRole())
                 .orElseThrow(() -> new IllegalStateException("Requested role " + command.requestedRole() + " not found"));
@@ -117,6 +132,17 @@ public class UserCommandServiceImpl implements UserCommandService {
         }
 
         LOGGER.info("User authenticated successfully with ID: {}", user.getId());
+    }
+
+    @Override
+    public void changePassword(Long userId, String currentPassword, String newPassword) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("User not found"));
+        if (!hashingService.matches(currentPassword, user.getPasswordHash())) {
+            throw new InvalidCredentialsException();
+        }
+        user.updatePassword(new HashedPassword(hashingService.encode(newPassword)));
+        userRepository.save(user);
     }
 
     public String generateTokenForUser(User user) {
