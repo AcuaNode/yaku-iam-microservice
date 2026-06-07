@@ -2,6 +2,7 @@ package io.github.rafaviv.yakubackend.iam.domain.services;
 
 import io.github.rafaviv.yakubackend.iam.domain.model.aggregates.User;
 import io.github.rafaviv.yakubackend.iam.domain.model.queries.GetAllUsersQuery;
+import io.github.rafaviv.yakubackend.iam.domain.model.queries.GetUserByIdQuery;
 import io.github.rafaviv.yakubackend.iam.domain.model.queries.GetUserByUsernameQuery;
 
 import java.util.List;
@@ -18,6 +19,13 @@ public interface UserQueryService {
      * @return An Optional containing the User aggregate if found.
      */
     Optional<User> handle(GetUserByUsernameQuery query);
+
+    /**
+     * Handles the query to find a user by ID.
+     * @param query The query containing the user ID.
+     * @return An Optional containing the User aggregate if found.
+     */
+    Optional<User> handle(GetUserByIdQuery query);
 
     /**
      * Handles the query to retrieve all users.

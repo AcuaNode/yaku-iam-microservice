@@ -94,4 +94,8 @@ public class User extends AuditableAbstractAggregateRoot<User> {
     public String getPasswordHash() {
         return password.hash();
     }
+
+    public void updatePassword(HashedPassword newPassword) {
+        this.password = newPassword;
+    }
 }

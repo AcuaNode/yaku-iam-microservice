@@ -2,6 +2,7 @@ package io.github.rafaviv.yakubackend.iam.application.internal.queryservices;
 
 import io.github.rafaviv.yakubackend.iam.domain.model.aggregates.User;
 import io.github.rafaviv.yakubackend.iam.domain.model.queries.GetAllUsersQuery;
+import io.github.rafaviv.yakubackend.iam.domain.model.queries.GetUserByIdQuery;
 import io.github.rafaviv.yakubackend.iam.domain.model.queries.GetUserByUsernameQuery;
 import io.github.rafaviv.yakubackend.iam.domain.services.UserQueryService;
 import io.github.rafaviv.yakubackend.iam.infrastructure.persistence.jpa.repositories.RoleRepository;
@@ -49,6 +50,12 @@ public class UserQueryServiceImpl implements UserQueryService {
         }
         
         return user;
+    }
+
+    @Override
+    public Optional<User> handle(GetUserByIdQuery query) {
+        LOGGER.debug("Processing GetUserByIdQuery for ID: {}", query.id());
+        return userRepository.findById(query.id());
     }
 
     @Override
